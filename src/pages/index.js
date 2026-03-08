@@ -116,22 +116,27 @@ const displayRole = (r, cr) => r === "Other" ? (cr || "Custom Role") : r;
 const PRIMARY = "#1e3a8a";
 const ACCENT = "#dc2626";
 
-// ⚠️ CHANGE THIS to your own password! Share it only with board members.
+const makeTask = (text) => ({ text, subtasks: [] });
+const migrateTasks = (monthlyTasks) => {
+  const migrated = {};
+  MONTHS.forEach(m => {
+    migrated[m] = (monthlyTasks[m] || []).map(t =>
+      typeof t === "string" ? makeTask(t) : { text: t.text || "", subtasks: t.subtasks || [] }
+    );
+  });
+  return migrated;
+};
+
+const emptyContact = () => ({ name: "", company: "", phone: "", email: "", notes: "" });
+
 const BOARD_PASSWORD = "DramaDragons2026";
 
 function PasswordGate({ onSuccess }) {
   const [pw, setPw] = useState("");
   const [error, setError] = useState(false);
-
   const handleSubmit = () => {
-    if (pw === BOARD_PASSWORD) {
-      onSuccess();
-    } else {
-      setError(true);
-      setTimeout(() => setError(false), 2000);
-    }
+    if (pw === BOARD_PASSWORD) { onSuccess(); } else { setError(true); setTimeout(() => setError(false), 2000); }
   };
-
   return (
     <>
       <Head><title>Jefferson Drama Dragons — Booster Club Operating Guide</title></Head>
@@ -146,19 +151,10 @@ function PasswordGate({ onSuccess }) {
           </div>
           <div style={{ padding: 32 }}>
             <label style={{ display: "block", fontSize: 13, fontWeight: 500, color: "#374151", marginBottom: 8 }}>Enter Board Password</label>
-            <input
-              type="password"
-              value={pw}
-              onChange={e => { setPw(e.target.value); setError(false); }}
-              onKeyDown={e => e.key === "Enter" && handleSubmit()}
-              placeholder="Password"
-              style={{ width: "100%", border: `1px solid ${error ? "#f87171" : "#d1d5db"}`, borderRadius: 8, padding: "12px 16px", fontSize: 14, outline: "none", boxSizing: "border-box" }}
-              autoFocus
-            />
+            <input type="password" value={pw} onChange={e => { setPw(e.target.value); setError(false); }} onKeyDown={e => e.key === "Enter" && handleSubmit()}
+              placeholder="Password" style={{ width: "100%", border: `1px solid ${error ? "#f87171" : "#d1d5db"}`, borderRadius: 8, padding: "12px 16px", fontSize: 14, outline: "none", boxSizing: "border-box" }} autoFocus />
             {error && <p style={{ color: "#ef4444", fontSize: 12, marginTop: 8 }}>Incorrect password. Please try again.</p>}
-            <button onClick={handleSubmit} style={{ width: "100%", marginTop: 16, padding: 12, background: PRIMARY, color: "white", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer" }}>
-              🔓 Enter
-            </button>
+            <button onClick={handleSubmit} style={{ width: "100%", marginTop: 16, padding: 12, background: PRIMARY, color: "white", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer" }}>🔓 Enter</button>
             <p style={{ fontSize: 11, color: "#9ca3af", textAlign: "center", marginTop: 16 }}>Contact your board president if you need the password.</p>
           </div>
         </div>
@@ -174,7 +170,6 @@ export default function OperatingGuide() {
   const [saving, setSaving] = useState(false);
   const [view, setView] = useState("home");
   const [currentKey, setCurrentKey] = useState(null);
-
   const [role, setRole] = useState("Secretary");
   const [customRole, setCustomRole] = useState("");
   const [orgName, setOrgName] = useState("JHS Drama Club Booster Club");
@@ -184,10 +179,15 @@ export default function OperatingGuide() {
   const [editIdx, setEditIdx] = useState(null);
   const [editText, setEditText] = useState("");
   const [tips, setTips] = useState("");
-  const [contacts, setContacts] = useState("");
+  const [contacts, setContacts] = useState([]);
   const [files, setFiles] = useState("");
   const [browseKey, setBrowseKey] = useState(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [newSubtask, setNewSubtask] = useState({});
+  const [expandedTask, setExpandedTask] = useState(null);
+  const [showContactForm, setShowContactForm] = useState(false);
+  const [contactForm, setContactForm] = useState(emptyContact());
+  const [editContactIdx, setEditContactIdx] = useState(null);
 
   useEffect(() => {
     if (!authenticated) return;
@@ -199,7 +199,14 @@ export default function OperatingGuide() {
           for (const k of res.keys) {
             try {
               const r = await storage.get(k);
-              if (r) guides[k] = JSON.parse(r.value);
+              if (r) {
+                const parsed = JSON.parse(r.value);
+                parsed.monthlyTasks = migrateTasks(parsed.monthlyTasks);
+                if (typeof parsed.contacts === "string") {
+                  parsed.contacts = parsed.contacts ? [{ name: "Imported", company: "", phone: "", email: "", notes: parsed.contacts }] : [];
+                }
+                guides[k] = parsed;
+              }
             } catch (e) {}
           }
         }
@@ -209,8 +216,6 @@ export default function OperatingGuide() {
     })();
   }, [authenticated]);
 
-  if (!authenticated) return <PasswordGate onSuccess={() => setAuthenticated(true)} />;
-
   const saveGuide = async () => {
     setSaving(true);
     const dr = displayRole(role, customRole);
@@ -219,28 +224,23 @@ export default function OperatingGuide() {
     try {
       await storage.set(key, JSON.stringify(data));
       setAllGuides(p => ({ ...p, [key]: data }));
-      setCurrentKey(key);
-      setSaving(false);
-      setView("home");
-    } catch (e) {
-      console.error("Save error:", e);
-      setSaving(false);
-      alert("Failed to save. Please try again.");
-    }
+      setCurrentKey(key); setSaving(false); setView("home");
+    } catch (e) { console.error("Save error:", e); setSaving(false); alert("Failed to save."); }
   };
 
   const loadGuideForEdit = (key) => {
-    const g = allGuides[key];
-    if (!g) return;
+    const g = allGuides[key]; if (!g) return;
     setRole(g.role); setCustomRole(g.customRole || ""); setOrgName(g.orgName || "JHS Drama Club Booster Club");
-    setMonthlyTasks(g.monthlyTasks); setTips(g.tips || ""); setContacts(g.contacts || ""); setFiles(g.files || "");
-    setCurrentKey(key); setActiveMonth("January"); setEditIdx(null); setView("edit");
+    setMonthlyTasks(migrateTasks(g.monthlyTasks)); setTips(g.tips || "");
+    setContacts(Array.isArray(g.contacts) ? g.contacts : []);
+    setFiles(g.files || "");
+    setCurrentKey(key); setActiveMonth("January"); setEditIdx(null); setExpandedTask(null); setView("edit");
   };
 
   const startNew = () => {
     setRole("Secretary"); setCustomRole(""); setOrgName("JHS Drama Club Booster Club");
-    setMonthlyTasks(emptyMonths()); setTips(""); setContacts(""); setFiles("");
-    setCurrentKey(null); setActiveMonth("January"); setEditIdx(null); setView("edit");
+    setMonthlyTasks(emptyMonths()); setTips(""); setContacts([]); setFiles("");
+    setCurrentKey(null); setActiveMonth("January"); setEditIdx(null); setExpandedTask(null); setView("edit");
   };
 
   const deleteGuide = async (key) => {
@@ -254,14 +254,14 @@ export default function OperatingGuide() {
 
   const addTask = () => {
     if (!newTask.trim()) return;
-    setMonthlyTasks(p => ({ ...p, [activeMonth]: [...p[activeMonth], newTask.trim()] }));
+    setMonthlyTasks(p => ({ ...p, [activeMonth]: [...p[activeMonth], makeTask(newTask.trim())] }));
     setNewTask("");
   };
-  const removeTask = (m, i) => setMonthlyTasks(p => ({ ...p, [m]: p[m].filter((_, j) => j !== i) }));
+  const removeTask = (m, i) => { setMonthlyTasks(p => ({ ...p, [m]: p[m].filter((_, j) => j !== i) })); if (expandedTask === i) setExpandedTask(null); };
   const startEditTask = (i, t) => { setEditIdx(i); setEditText(t); };
   const saveEditTask = (m) => {
     if (!editText.trim()) return;
-    setMonthlyTasks(p => ({ ...p, [m]: p[m].map((t, i) => i === editIdx ? editText.trim() : t) }));
+    setMonthlyTasks(p => ({ ...p, [m]: p[m].map((t, i) => i === editIdx ? { ...t, text: editText.trim() } : t) }));
     setEditIdx(null); setEditText("");
   };
   const moveTask = (m, i, d) => {
@@ -271,14 +271,44 @@ export default function OperatingGuide() {
       [a[i], a[ni]] = [a[ni], a[i]];
       return { ...p, [m]: a };
     });
+    if (expandedTask === i) setExpandedTask(i + d);
+    else if (expandedTask === i + d) setExpandedTask(i);
   };
+
+  const addSubtask = (m, ti) => {
+    const text = (newSubtask[`${m}-${ti}`] || "").trim();
+    if (!text) return;
+    setMonthlyTasks(p => ({ ...p, [m]: p[m].map((t, i) => i === ti ? { ...t, subtasks: [...t.subtasks, { text, checked: false }] } : t) }));
+    setNewSubtask(p => ({ ...p, [`${m}-${ti}`]: "" }));
+  };
+  const removeSubtask = (m, ti, si) => {
+    setMonthlyTasks(p => ({ ...p, [m]: p[m].map((t, i) => i === ti ? { ...t, subtasks: t.subtasks.filter((_, j) => j !== si) } : t) }));
+  };
+  const toggleSubtask = (m, ti, si) => {
+    setMonthlyTasks(p => ({ ...p, [m]: p[m].map((t, i) => i === ti ? { ...t, subtasks: t.subtasks.map((s, j) => j === si ? { ...s, checked: !s.checked } : s) } : t) }));
+  };
+
+  const saveContact = () => {
+    if (!contactForm.name.trim()) return;
+    if (editContactIdx !== null) {
+      setContacts(p => p.map((c, i) => i === editContactIdx ? { ...contactForm } : c));
+    } else {
+      setContacts(p => [...p, { ...contactForm }]);
+    }
+    setContactForm(emptyContact()); setShowContactForm(false); setEditContactIdx(null);
+  };
+  const editContact = (i) => { setContactForm({ ...contacts[i] }); setEditContactIdx(i); setShowContactForm(true); };
+  const removeContact = (i) => setContacts(p => p.filter((_, j) => j !== i));
 
   const loadTemplate = () => {
     const t = TASK_TEMPLATES[role];
-    if (!t) return alert("No template available for this role yet. Add your tasks manually!");
+    if (!t) return alert("No template available for this role yet.");
     setMonthlyTasks(p => {
       const next = { ...p };
-      Object.entries(t).forEach(([m, tasks]) => { next[m] = [...new Set([...next[m], ...tasks])]; });
+      Object.entries(t).forEach(([m, tasks]) => {
+        const existing = next[m].map(t => t.text);
+        tasks.forEach(text => { if (!existing.includes(text)) next[m] = [...next[m], makeTask(text)]; });
+      });
       return next;
     });
   };
@@ -286,7 +316,6 @@ export default function OperatingGuide() {
   const totalTasks = Object.values(monthlyTasks).reduce((s, t) => s + t.length, 0);
   const guideList = Object.entries(allGuides);
 
-  // === EXPORT ===
   const generateGuideHTML = (g) => {
     const dr = displayRole(g.role, g.customRole);
     let html = `<div style="page-break-after:always;margin-bottom:40px;">`;
@@ -296,11 +325,26 @@ export default function OperatingGuide() {
       const tasks = g.monthlyTasks[m];
       if (!tasks || !tasks.length) return;
       html += `<h3 style="color:${PRIMARY};margin-top:20px;margin-bottom:8px;font-size:16px;border-bottom:1px solid #e5e7eb;padding-bottom:4px;">${m}</h3><ul style="margin:0;padding-left:20px;">`;
-      tasks.forEach(t => { html += `<li style="margin-bottom:6px;font-size:14px;color:#374151;">${t}</li>`; });
+      tasks.forEach(t => {
+        const task = typeof t === "string" ? { text: t, subtasks: [] } : t;
+        html += `<li style="margin-bottom:6px;font-size:14px;color:#374151;">${task.text}`;
+        if (task.subtasks && task.subtasks.length) {
+          html += `<ul style="margin:4px 0 0;padding-left:20px;">`;
+          task.subtasks.forEach(s => { html += `<li style="font-size:13px;color:#6b7280;margin-bottom:3px;">${s.checked ? "✅" : "☐"} ${s.text}</li>`; });
+          html += `</ul>`;
+        }
+        html += `</li>`;
+      });
       html += `</ul>`;
     });
     if (g.tips) html += `<h3 style="color:${PRIMARY};margin-top:24px;font-size:16px;">💡 Tips & Institutional Knowledge</h3><p style="font-size:14px;color:#374151;white-space:pre-wrap;">${g.tips}</p>`;
-    if (g.contacts) html += `<h3 style="color:${PRIMARY};margin-top:20px;font-size:16px;">📇 Key Contacts</h3><p style="font-size:14px;color:#374151;white-space:pre-wrap;">${g.contacts}</p>`;
+    const cts = Array.isArray(g.contacts) ? g.contacts : [];
+    if (cts.length) {
+      html += `<h3 style="color:${PRIMARY};margin-top:20px;font-size:16px;">📇 Key Contacts</h3><table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:8px;">`;
+      html += `<tr style="background:#f9fafb;"><th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e5e7eb;">Name</th><th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e5e7eb;">Role / Company</th><th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e5e7eb;">Phone</th><th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e5e7eb;">Email</th><th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e5e7eb;">Notes</th></tr>`;
+      cts.forEach(c => { html += `<tr><td style="padding:6px 8px;border-bottom:1px solid #f3f4f6;">${c.name}</td><td style="padding:6px 8px;border-bottom:1px solid #f3f4f6;">${c.company||""}</td><td style="padding:6px 8px;border-bottom:1px solid #f3f4f6;">${c.phone||""}</td><td style="padding:6px 8px;border-bottom:1px solid #f3f4f6;">${c.email||""}</td><td style="padding:6px 8px;border-bottom:1px solid #f3f4f6;">${c.notes||""}</td></tr>`; });
+      html += `</table>`;
+    }
     if (g.files) html += `<h3 style="color:${PRIMARY};margin-top:20px;font-size:16px;">📁 Important Files & Locations</h3><p style="font-size:14px;color:#374151;white-space:pre-wrap;">${g.files}</p>`;
     html += `</div>`;
     return html;
@@ -309,13 +353,8 @@ export default function OperatingGuide() {
   const exportDocument = (mode, singleKey) => {
     const guides = mode === "single" ? [[singleKey, allGuides[singleKey]]] : guideList;
     const title = mode === "single" ? `${displayRole(allGuides[singleKey].role, allGuides[singleKey].customRole)} — Operating Guide` : "Jefferson Drama Dragons — All Role Guides";
-    let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
-      <style>@media print{body{margin:0.5in}h2{page-break-before:always}h2:first-of-type{page-break-before:avoid}}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:800px;margin:0 auto;padding:40px 20px;color:#1f2937}@page{margin:0.75in}</style></head><body>`;
-    html += `<div style="text-align:center;margin-bottom:40px;padding-bottom:20px;border-bottom:3px solid ${ACCENT};">`;
-    html += `<div style="width:60px;height:60px;border-radius:50%;background:${PRIMARY};border:3px solid ${ACCENT};display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;"><span style="color:white;font-weight:900;font-size:28px;">J</span></div>`;
-    html += `<h1 style="color:${PRIMARY};margin:8px 0 4px;">Jefferson Drama Dragons</h1>`;
-    html += `<p style="color:#6b7280;font-size:14px;">Booster Club Operating Guide</p>`;
-    html += `<p style="color:#9ca3af;font-size:12px;">Exported ${new Date().toLocaleDateString()}</p></div>`;
+    let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title><style>@media print{body{margin:0.5in}h2{page-break-before:always}h2:first-of-type{page-break-before:avoid}}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:800px;margin:0 auto;padding:40px 20px;color:#1f2937}@page{margin:0.75in}</style></head><body>`;
+    html += `<div style="text-align:center;margin-bottom:40px;padding-bottom:20px;border-bottom:3px solid ${ACCENT};"><div style="width:60px;height:60px;border-radius:50%;background:${PRIMARY};border:3px solid ${ACCENT};display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;"><span style="color:white;font-weight:900;font-size:28px;">J</span></div><h1 style="color:${PRIMARY};margin:8px 0 4px;">Jefferson Drama Dragons</h1><p style="color:#6b7280;font-size:14px;">Booster Club Operating Guide</p><p style="color:#9ca3af;font-size:12px;">Exported ${new Date().toLocaleDateString()}</p></div>`;
     if (mode === "all" && guides.length > 1) {
       html += `<div style="margin-bottom:32px;padding:16px 20px;background:#f9fafb;border-radius:8px;"><h3 style="color:${PRIMARY};margin:0 0 8px;font-size:15px;">Table of Contents</h3><ul style="margin:0;padding-left:20px;">`;
       guides.forEach(([, g]) => { html += `<li style="margin-bottom:4px;font-size:14px;">${displayRole(g.role, g.customRole)}</li>`; });
@@ -323,35 +362,34 @@ export default function OperatingGuide() {
     }
     guides.forEach(([, g]) => { html += generateGuideHTML(g); });
     html += `</body></html>`;
-    const blob = new Blob([html], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
+    const blob = new Blob([html], { type: "text/html" }); const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url;
     a.download = mode === "single" ? `${displayRole(guides[0][1].role, guides[0][1].customRole).replace(/[^a-zA-Z0-9 ]/g, "")}-Guide.html` : "Drama-Boosters-All-Guides.html";
     document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
   };
 
-  const styles = {
+  const s = {
     page: { minHeight: "100vh", background: "#f9fafb", padding: 16 },
     container: { maxWidth: 768, margin: "0 auto" },
-    header: { background: `linear-gradient(135deg, ${PRIMARY} 0%, #1e40af 100%)`, borderRadius: "16px", padding: "32px", color: "white", marginBottom: 24 },
-    headerEdit: { background: `linear-gradient(135deg, ${PRIMARY} 0%, #1e40af 100%)`, borderRadius: "16px 16px 0 0", padding: "20px 24px", color: "white" },
-    card: { background: "white", borderRadius: "12px", boxShadow: "0 1px 3px rgba(0,0,0,0.1)", border: "1px solid #f3f4f6", padding: "20px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
+    hdr: { background: `linear-gradient(135deg, ${PRIMARY} 0%, #1e40af 100%)`, borderRadius: 16, padding: 32, color: "white", marginBottom: 24 },
+    hdrEdit: { background: `linear-gradient(135deg, ${PRIMARY} 0%, #1e40af 100%)`, borderRadius: "16px 16px 0 0", padding: "20px 24px", color: "white" },
+    card: { background: "white", borderRadius: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.1)", border: "1px solid #f3f4f6", padding: 20, display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
     btn: { padding: "10px 20px", background: PRIMARY, color: "white", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer" },
-    btnOutline: { padding: "10px 20px", background: "white", color: PRIMARY, border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer" },
-    btnGray: { padding: "6px 12px", background: "#f3f4f6", color: "#374151", border: "none", borderRadius: 8, fontWeight: 500, fontSize: 13, cursor: "pointer" },
-    btnBlue: { padding: "6px 12px", background: "#eff6ff", color: PRIMARY, border: "none", borderRadius: 8, fontWeight: 500, fontSize: 13, cursor: "pointer" },
-    input: { width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 12px", fontSize: 14, outline: "none", boxSizing: "border-box" },
-    textarea: { width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 12px", fontSize: 14, outline: "none", resize: "vertical", boxSizing: "border-box" },
-    label: { display: "block", fontSize: 13, fontWeight: 500, color: "#374151", marginBottom: 4 },
-    select: { width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 12px", fontSize: 14, outline: "none", background: "white", boxSizing: "border-box" },
-    taskRow: { display: "flex", alignItems: "flex-start", gap: 8, background: "#f9fafb", borderRadius: 8, padding: "10px 12px", marginBottom: 8 },
-    subtle: { color: "rgba(255,255,255,0.7)", fontSize: 14, marginTop: 4 },
-    backLink: { color: PRIMARY, fontSize: 13, fontWeight: 500, cursor: "pointer", background: "none", border: "none", marginBottom: 16, padding: 0 },
+    btnO: { padding: "10px 20px", background: "white", color: PRIMARY, border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer" },
+    btnG: { padding: "6px 12px", background: "#f3f4f6", color: "#374151", border: "none", borderRadius: 8, fontWeight: 500, fontSize: 13, cursor: "pointer" },
+    btnB: { padding: "6px 12px", background: "#eff6ff", color: PRIMARY, border: "none", borderRadius: 8, fontWeight: 500, fontSize: 13, cursor: "pointer" },
+    inp: { width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 12px", fontSize: 14, outline: "none", boxSizing: "border-box" },
+    ta: { width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 12px", fontSize: 14, outline: "none", resize: "vertical", boxSizing: "border-box" },
+    lbl: { display: "block", fontSize: 13, fontWeight: 500, color: "#374151", marginBottom: 4 },
+    sel: { width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 12px", fontSize: 14, outline: "none", background: "white", boxSizing: "border-box" },
+    trow: { display: "flex", alignItems: "flex-start", gap: 8, background: "#f9fafb", borderRadius: 8, padding: "10px 12px" },
+    sub: { color: "rgba(255,255,255,0.7)", fontSize: 14, marginTop: 4 },
+    back: { color: PRIMARY, fontSize: 13, fontWeight: 500, cursor: "pointer", background: "none", border: "none", marginBottom: 16, padding: 0 },
+    smBtn: { fontSize: 12, background: "none", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 4 },
   };
 
   const Logo = ({ size = "lg" }) => {
-    const sz = size === "lg" ? 64 : 40;
-    const fsz = size === "lg" ? 28 : 18;
+    const sz = size === "lg" ? 64 : 40, fsz = size === "lg" ? 28 : 18;
     return (
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div style={{ width: sz, height: sz, borderRadius: "50%", background: PRIMARY, border: `3px solid ${ACCENT}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -359,87 +397,104 @@ export default function OperatingGuide() {
         </div>
         <div>
           <div style={{ fontWeight: 700, color: "white", fontSize: size === "lg" ? 24 : 18 }}>Jefferson Drama Dragons</div>
-          <div style={styles.subtle}>Booster Club Operating Guide</div>
+          <div style={s.sub}>Booster Club Operating Guide</div>
         </div>
       </div>
     );
   };
 
-  if (loading) {
-    return (
-      <div style={{ ...styles.page, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ width: 40, height: 40, borderRadius: "50%", background: PRIMARY, border: `3px solid ${ACCENT}`, display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
-            <span style={{ color: "white", fontWeight: 900, fontSize: 18 }}>J</span>
-          </div>
-          <p style={{ color: "#6b7280", fontSize: 14 }}>Loading guides...</p>
+  const ContactCard = ({ c, i, editable }) => (
+    <div style={{ background: "#f9fafb", borderRadius: 8, padding: 12, display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 500, color: "#1f2937", fontSize: 14 }}>{c.name}</div>
+        {c.company && <div style={{ fontSize: 12, color: "#6b7280" }}>{c.company}</div>}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px", marginTop: 4 }}>
+          {c.phone && <span style={{ fontSize: 12, color: "#4b5563" }}>📞 {c.phone}</span>}
+          {c.email && <span style={{ fontSize: 12, color: "#4b5563" }}>✉️ {c.email}</span>}
         </div>
+        {c.notes && <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4, fontStyle: "italic" }}>{c.notes}</div>}
       </div>
-    );
-  }
+      {editable && (
+        <div style={{ display: "flex", gap: 4, marginLeft: 8, flexShrink: 0 }}>
+          <button onClick={() => editContact(i)} style={{ ...s.smBtn, color: "#3b82f6", fontWeight: 500 }}>Edit</button>
+          <button onClick={() => removeContact(i)} style={{ ...s.smBtn, color: "#f87171", fontWeight: 500 }}>✕</button>
+        </div>
+      )}
+    </div>
+  );
+
+  if (!authenticated) return <PasswordGate onSuccess={() => setAuthenticated(true)} />;
+
+  if (loading) return (
+    <div style={{ ...s.page, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ width: 40, height: 40, borderRadius: "50%", background: PRIMARY, border: `3px solid ${ACCENT}`, display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+          <span style={{ color: "white", fontWeight: 900, fontSize: 18 }}>J</span>
+        </div>
+        <p style={{ color: "#6b7280", fontSize: 14 }}>Loading guides...</p>
+      </div>
+    </div>
+  );
 
   // === HOME ===
   if (view === "home") {
     return (
       <>
         <Head><title>Jefferson Drama Dragons — Booster Club Operating Guide</title></Head>
-        <div style={styles.page}>
-          <div style={styles.container}>
-            <div style={styles.header}>
-              <Logo size="lg" />
-              <p style={{ ...styles.subtle, marginTop: 16 }}>A shared reference for every booster board role — so your successor knows exactly what to do, month by month.</p>
-              <div style={{ marginTop: 20, display: "flex", gap: 12, flexWrap: "wrap" }}>
-                <button onClick={startNew} style={styles.btnOutline}>+ Create New Role Guide</button>
-                {guideList.length > 0 && (
-                  <div style={{ position: "relative", display: "inline-block" }}>
-                    <button onClick={() => setShowExportMenu(!showExportMenu)} style={{ ...styles.btnOutline, background: "transparent", color: "white", border: "2px solid white" }}>📄 Export Guides</button>
-                    {showExportMenu && (
-                      <div style={{ position: "absolute", left: 0, top: "100%", marginTop: 8, background: "white", borderRadius: 8, boxShadow: "0 10px 25px rgba(0,0,0,0.15)", border: "1px solid #e5e7eb", padding: "8px 0", zIndex: 50, minWidth: 220 }}>
-                        <button onClick={() => { exportDocument("all"); setShowExportMenu(false); }} style={{ width: "100%", textAlign: "left", padding: "10px 16px", fontSize: 14, color: "#374151", background: "none", border: "none", cursor: "pointer", fontWeight: 500 }}>📋 Export All Guides</button>
-                        <div style={{ borderTop: "1px solid #f3f4f6", margin: "4px 0" }}></div>
-                        <p style={{ padding: "4px 16px", fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase" }}>Export Single Guide:</p>
-                        {guideList.map(([key, g]) => (
-                          <button key={key} onClick={() => { exportDocument("single", key); setShowExportMenu(false); }}
-                            style={{ width: "100%", textAlign: "left", padding: "8px 16px", fontSize: 13, color: "#6b7280", background: "none", border: "none", cursor: "pointer" }}>{displayRole(g.role, g.customRole)}</button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {guideList.length === 0 ? (
-              <div style={{ background: "white", borderRadius: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.1)", padding: "40px 20px", textAlign: "center" }}>
-                <p style={{ fontSize: 40, marginBottom: 12 }}>🎭</p>
-                <p style={{ color: "#6b7280" }}>No guides created yet. Be the first to document your role!</p>
-              </div>
-            ) : (
-              <div>
-                <h2 style={{ fontSize: 18, fontWeight: 600, color: "#1f2937", marginBottom: 12 }}>All Role Guides ({guideList.length})</h2>
-                {guideList.map(([key, g]) => {
-                  const dr = displayRole(g.role, g.customRole);
-                  const tc = Object.values(g.monthlyTasks).reduce((s, t) => s + t.length, 0);
-                  const mc = Object.values(g.monthlyTasks).filter(t => t.length).length;
-                  return (
-                    <div key={key} style={styles.card}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <span style={{ fontWeight: 600, color: "#1f2937", fontSize: 18 }}>{dr}</span>
-                        <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>{tc} task{tc !== 1 ? "s" : ""} across {mc} month{mc !== 1 ? "s" : ""} · Updated {new Date(g.updatedAt).toLocaleDateString()}</p>
-                      </div>
-                      <div style={{ display: "flex", gap: 8, marginLeft: 16 }}>
-                        <button onClick={() => { setBrowseKey(key); setView("browse"); }} style={styles.btnGray}>View</button>
-                        <button onClick={() => loadGuideForEdit(key)} style={styles.btnBlue}>Edit</button>
-                        <button onClick={() => deleteGuide(key)} style={{ ...styles.btnGray, color: "#f87171" }}>Delete</button>
-                      </div>
+        <div style={s.page}><div style={s.container}>
+          <div style={s.hdr}>
+            <Logo size="lg" />
+            <p style={{ ...s.sub, marginTop: 16 }}>A shared reference for every booster board role — so your successor knows exactly what to do, month by month.</p>
+            <div style={{ marginTop: 20, display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <button onClick={startNew} style={s.btnO}>+ Create New Role Guide</button>
+              {guideList.length > 0 && (
+                <div style={{ position: "relative", display: "inline-block" }}>
+                  <button onClick={() => setShowExportMenu(!showExportMenu)} style={{ ...s.btnO, background: "transparent", color: "white", border: "2px solid white" }}>📄 Export Guides</button>
+                  {showExportMenu && (
+                    <div style={{ position: "absolute", left: 0, top: "100%", marginTop: 8, background: "white", borderRadius: 8, boxShadow: "0 10px 25px rgba(0,0,0,0.15)", border: "1px solid #e5e7eb", padding: "8px 0", zIndex: 50, minWidth: 220 }}>
+                      <button onClick={() => { exportDocument("all"); setShowExportMenu(false); }} style={{ width: "100%", textAlign: "left", padding: "10px 16px", fontSize: 14, color: "#374151", background: "none", border: "none", cursor: "pointer", fontWeight: 500 }}>📋 Export All Guides</button>
+                      <div style={{ borderTop: "1px solid #f3f4f6", margin: "4px 0" }}></div>
+                      <p style={{ padding: "4px 16px", fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase" }}>Export Single Guide:</p>
+                      {guideList.map(([key, g]) => (
+                        <button key={key} onClick={() => { exportDocument("single", key); setShowExportMenu(false); }}
+                          style={{ width: "100%", textAlign: "left", padding: "8px 16px", fontSize: 13, color: "#6b7280", background: "none", border: "none", cursor: "pointer" }}>{displayRole(g.role, g.customRole)}</button>
+                      ))}
                     </div>
-                  );
-                })}
-              </div>
-            )}
-            <p style={{ textAlign: "center", fontSize: 12, color: "#9ca3af", marginTop: 32 }}>🎭 Data is shared — all booster board members can view and edit guides.</p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+          {guideList.length === 0 ? (
+            <div style={{ background: "white", borderRadius: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.1)", padding: "40px 20px", textAlign: "center" }}>
+              <p style={{ fontSize: 40, marginBottom: 12 }}>🎭</p>
+              <p style={{ color: "#6b7280" }}>No guides created yet. Be the first to document your role!</p>
+            </div>
+          ) : (
+            <div>
+              <h2 style={{ fontSize: 18, fontWeight: 600, color: "#1f2937", marginBottom: 12 }}>All Role Guides ({guideList.length})</h2>
+              {guideList.map(([key, g]) => {
+                const dr = displayRole(g.role, g.customRole);
+                const tc = Object.values(g.monthlyTasks).reduce((s, t) => s + t.length, 0);
+                const mc = Object.values(g.monthlyTasks).filter(t => t.length).length;
+                return (
+                  <div key={key} style={s.card}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontWeight: 600, color: "#1f2937", fontSize: 18 }}>{dr}</span>
+                      <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>{tc} task{tc !== 1 ? "s" : ""} across {mc} month{mc !== 1 ? "s" : ""} · Updated {new Date(g.updatedAt).toLocaleDateString()}</p>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, marginLeft: 16 }}>
+                      <button onClick={() => { setBrowseKey(key); setView("browse"); }} style={s.btnG}>View</button>
+                      <button onClick={() => loadGuideForEdit(key)} style={s.btnB}>Edit</button>
+                      <button onClick={() => deleteGuide(key)} style={{ ...s.btnG, color: "#f87171" }}>Delete</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <p style={{ textAlign: "center", fontSize: 12, color: "#9ca3af", marginTop: 32 }}>🎭 Data is shared — all booster board members can view and edit guides.</p>
+        </div></div>
       </>
     );
   }
@@ -448,61 +503,75 @@ export default function OperatingGuide() {
   if (view === "browse" && browseKey && allGuides[browseKey]) {
     const g = allGuides[browseKey];
     const dr = displayRole(g.role, g.customRole);
+    const cts = Array.isArray(g.contacts) ? g.contacts : [];
     return (
       <>
         <Head><title>{dr} — Jefferson Drama Dragons Operating Guide</title></Head>
-        <div style={styles.page}>
-          <div style={styles.container}>
-            <button onClick={() => setView("home")} style={styles.backLink}>← Back to All Guides</button>
-            <div style={{ background: "white", borderRadius: 16, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", overflow: "hidden" }}>
-              <div style={{ ...styles.headerEdit, borderRadius: "16px 16px 0 0" }}>
-                <Logo size="sm" />
-                <h2 style={{ fontSize: 24, fontWeight: 700, marginTop: 16, color: "white" }}>{dr}</h2>
-                <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginTop: 4 }}>Last updated {new Date(g.updatedAt).toLocaleDateString()}</p>
-              </div>
-              <div style={{ padding: 32 }}>
-                {MONTHS.map(m => {
-                  const tasks = g.monthlyTasks[m];
-                  if (!tasks || !tasks.length) return null;
-                  return (
-                    <div key={m} style={{ marginBottom: 24 }}>
-                      <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1f2937", borderBottom: `2px solid ${ACCENT}`, paddingBottom: 4, marginBottom: 12 }}>{m}</h3>
-                      {tasks.map((t, i) => (
-                        <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 14, color: "#374151", marginBottom: 8 }}>
-                          <span style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }}>◆</span>
-                          <span>{t}</span>
+        <div style={s.page}><div style={s.container}>
+          <button onClick={() => setView("home")} style={s.back}>← Back to All Guides</button>
+          <div style={{ background: "white", borderRadius: 16, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", overflow: "hidden" }}>
+            <div style={{ ...s.hdrEdit, borderRadius: "16px 16px 0 0" }}>
+              <Logo size="sm" />
+              <h2 style={{ fontSize: 24, fontWeight: 700, marginTop: 16, color: "white" }}>{dr}</h2>
+              <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginTop: 4 }}>Last updated {new Date(g.updatedAt).toLocaleDateString()}</p>
+            </div>
+            <div style={{ padding: 32 }}>
+              {MONTHS.map(m => {
+                const tasks = g.monthlyTasks[m];
+                if (!tasks || !tasks.length) return null;
+                return (
+                  <div key={m} style={{ marginBottom: 24 }}>
+                    <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1f2937", borderBottom: `2px solid ${ACCENT}`, paddingBottom: 4, marginBottom: 12 }}>{m}</h3>
+                    {tasks.map((t, i) => {
+                      const task = typeof t === "string" ? { text: t, subtasks: [] } : t;
+                      return (
+                        <div key={i} style={{ marginBottom: 8 }}>
+                          <div style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 14, color: "#374151" }}>
+                            <span style={{ color: ACCENT, marginTop: 2, flexShrink: 0 }}>◆</span>
+                            <span>{task.text}</span>
+                          </div>
+                          {task.subtasks && task.subtasks.length > 0 && (
+                            <div style={{ marginLeft: 24, marginTop: 4 }}>
+                              {task.subtasks.map((st, j) => (
+                                <div key={j} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: st.checked ? "#9ca3af" : "#4b5563", marginBottom: 4 }}>
+                                  <span>{st.checked ? "✅" : "☐"}</span>
+                                  <span style={st.checked ? { textDecoration: "line-through" } : {}}>{st.text}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  );
-                })}
-                {g.tips && (
-                  <div style={{ marginTop: 32, paddingTop: 24, borderTop: "1px solid #f3f4f6" }}>
-                    <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1f2937", marginBottom: 8 }}>💡 Tips & Institutional Knowledge</h3>
-                    <p style={{ fontSize: 14, color: "#374151", whiteSpace: "pre-wrap" }}>{g.tips}</p>
+                      );
+                    })}
                   </div>
-                )}
-                {g.contacts && (
-                  <div style={{ marginTop: 24, paddingTop: 24, borderTop: "1px solid #f3f4f6" }}>
-                    <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1f2937", marginBottom: 8 }}>📇 Key Contacts</h3>
-                    <p style={{ fontSize: 14, color: "#374151", whiteSpace: "pre-wrap" }}>{g.contacts}</p>
-                  </div>
-                )}
-                {g.files && (
-                  <div style={{ marginTop: 24, paddingTop: 24, borderTop: "1px solid #f3f4f6" }}>
-                    <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1f2937", marginBottom: 8 }}>📁 Important Files & Locations</h3>
-                    <p style={{ fontSize: 14, color: "#374151", whiteSpace: "pre-wrap" }}>{g.files}</p>
-                  </div>
-                )}
-                <div style={{ marginTop: 32, paddingTop: 24, borderTop: "1px solid #f3f4f6", display: "flex", gap: 12 }}>
-                  <button onClick={() => loadGuideForEdit(browseKey)} style={styles.btn}>Edit This Guide</button>
-                  <button onClick={() => exportDocument("single", browseKey)} style={styles.btnGray}>📄 Export This Guide</button>
-                  <button onClick={() => setView("home")} style={styles.btnGray}>Back to All</button>
+                );
+              })}
+              {g.tips && (
+                <div style={{ marginTop: 32, paddingTop: 24, borderTop: "1px solid #f3f4f6" }}>
+                  <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1f2937", marginBottom: 8 }}>💡 Tips & Institutional Knowledge</h3>
+                  <p style={{ fontSize: 14, color: "#374151", whiteSpace: "pre-wrap" }}>{g.tips}</p>
                 </div>
+              )}
+              {cts.length > 0 && (
+                <div style={{ marginTop: 24, paddingTop: 24, borderTop: "1px solid #f3f4f6" }}>
+                  <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1f2937", marginBottom: 12 }}>📇 Key Contacts</h3>
+                  {cts.map((c, i) => <ContactCard key={i} c={c} i={i} editable={false} />)}
+                </div>
+              )}
+              {g.files && (
+                <div style={{ marginTop: 24, paddingTop: 24, borderTop: "1px solid #f3f4f6" }}>
+                  <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1f2937", marginBottom: 8 }}>📁 Important Files & Locations</h3>
+                  <p style={{ fontSize: 14, color: "#374151", whiteSpace: "pre-wrap" }}>{g.files}</p>
+                </div>
+              )}
+              <div style={{ marginTop: 32, paddingTop: 24, borderTop: "1px solid #f3f4f6", display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <button onClick={() => loadGuideForEdit(browseKey)} style={s.btn}>Edit This Guide</button>
+                <button onClick={() => exportDocument("single", browseKey)} style={s.btnG}>📄 Export</button>
+                <button onClick={() => setView("home")} style={s.btnG}>Back to All</button>
               </div>
             </div>
           </div>
-        </div>
+        </div></div>
       </>
     );
   }
@@ -511,118 +580,178 @@ export default function OperatingGuide() {
   return (
     <>
       <Head><title>Edit Guide — Jefferson Drama Dragons</title></Head>
-      <div style={styles.page}>
-        <div style={styles.container}>
-          <button onClick={() => setView("home")} style={styles.backLink}>← Back to All Guides</button>
-
-          <div style={styles.headerEdit}>
-            <Logo size="sm" />
-            <h2 style={{ fontSize: 20, fontWeight: 700, marginTop: 12, color: "white" }}>{currentKey ? "Edit" : "New"} Role Guide</h2>
-            <p style={{ ...styles.subtle, marginTop: 4 }}>Document what you do each month so your successor knows exactly what to expect</p>
+      <div style={s.page}><div style={s.container}>
+        <button onClick={() => setView("home")} style={s.back}>← Back to All Guides</button>
+        <div style={s.hdrEdit}>
+          <Logo size="sm" />
+          <h2 style={{ fontSize: 20, fontWeight: 700, marginTop: 12, color: "white" }}>{currentKey ? "Edit" : "New"} Role Guide</h2>
+          <p style={{ ...s.sub, marginTop: 4 }}>Document what you do each month so your successor knows exactly what to expect</p>
+        </div>
+        <div style={{ background: "white", boxShadow: "0 4px 12px rgba(0,0,0,0.1)", borderRadius: "0 0 16px 16px" }}>
+          {/* Role & Org */}
+          <div style={{ padding: 24, borderBottom: "1px solid #f3f4f6" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              <div>
+                <label style={s.lbl}>Board Role</label>
+                <select value={role} onChange={e => setRole(e.target.value)} style={s.sel}>
+                  {ROLES.map(r => <option key={r}>{r}</option>)}
+                </select>
+                {role === "Other" && <input value={customRole} onChange={e => setCustomRole(e.target.value)} placeholder="Enter role title" style={{ ...s.inp, marginTop: 8 }} />}
+              </div>
+              <div>
+                <label style={s.lbl}>Organization</label>
+                <input value={orgName} onChange={e => setOrgName(e.target.value)} style={s.inp} />
+              </div>
+            </div>
+            {TASK_TEMPLATES[role] && (
+              <button onClick={loadTemplate} style={{ marginTop: 12, fontSize: 13, fontWeight: 500, color: ACCENT, background: "none", border: "none", cursor: "pointer" }}>⚡ Load starter template for {role}</button>
+            )}
           </div>
 
-          <div style={{ background: "white", boxShadow: "0 4px 12px rgba(0,0,0,0.1)", borderRadius: "0 0 16px 16px" }}>
-            {/* Role & Org */}
-            <div style={{ padding: 24, borderBottom: "1px solid #f3f4f6" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                <div>
-                  <label style={styles.label}>Board Role</label>
-                  <select value={role} onChange={e => setRole(e.target.value)} style={styles.select}>
-                    {ROLES.map(r => <option key={r}>{r}</option>)}
-                  </select>
-                  {role === "Other" && <input value={customRole} onChange={e => setCustomRole(e.target.value)} placeholder="Enter role title" style={{ ...styles.input, marginTop: 8 }} />}
-                </div>
-                <div>
-                  <label style={styles.label}>Organization</label>
-                  <input value={orgName} onChange={e => setOrgName(e.target.value)} style={styles.input} />
-                </div>
-              </div>
-              {TASK_TEMPLATES[role] && (
-                <button onClick={loadTemplate} style={{ marginTop: 12, fontSize: 13, fontWeight: 500, color: ACCENT, background: "none", border: "none", cursor: "pointer" }}>⚡ Load starter template for {role}</button>
-              )}
+          {/* Month Tabs */}
+          <div style={{ padding: "16px 24px 0" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {MONTHS.map(m => {
+                const has = monthlyTasks[m].length > 0, active = m === activeMonth;
+                return (
+                  <button key={m} onClick={() => { setActiveMonth(m); setEditIdx(null); setExpandedTask(null); }}
+                    style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 500, border: "none", cursor: "pointer", position: "relative",
+                      background: active ? PRIMARY : has ? "#eff6ff" : "#f9fafb",
+                      color: active ? "white" : has ? PRIMARY : "#9ca3af" }}>
+                    {m.slice(0, 3)}
+                    {has && !active && <span style={{ position: "absolute", top: -3, right: -3, width: 8, height: 8, borderRadius: "50%", background: ACCENT }}></span>}
+                  </button>
+                );
+              })}
             </div>
+          </div>
 
-            {/* Month Tabs */}
-            <div style={{ padding: "16px 24px 0" }}>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {MONTHS.map(m => {
-                  const has = monthlyTasks[m].length > 0;
-                  const active = m === activeMonth;
-                  return (
-                    <button key={m} onClick={() => { setActiveMonth(m); setEditIdx(null); }}
-                      style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 500, border: "none", cursor: "pointer", position: "relative",
-                        background: active ? PRIMARY : has ? "#eff6ff" : "#f9fafb",
-                        color: active ? "white" : has ? PRIMARY : "#9ca3af" }}>
-                      {m.slice(0, 3)}
-                      {has && !active && <span style={{ position: "absolute", top: -3, right: -3, width: 8, height: 8, borderRadius: "50%", background: ACCENT }}></span>}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Tasks */}
-            <div style={{ padding: 24 }}>
-              <h3 style={{ fontSize: 18, fontWeight: 600, color: "#1f2937", marginBottom: 12 }}>{activeMonth} Tasks</h3>
-              {monthlyTasks[activeMonth].length === 0 && (
-                <p style={{ color: "#9ca3af", fontSize: 14, marginBottom: 16, fontStyle: "italic" }}>No tasks yet for {activeMonth}. Add your first one below.</p>
-              )}
-              {monthlyTasks[activeMonth].map((task, i) => (
-                <div key={i} style={styles.taskRow}>
+          {/* Tasks */}
+          <div style={{ padding: 24 }}>
+            <h3 style={{ fontSize: 18, fontWeight: 600, color: "#1f2937", marginBottom: 12 }}>{activeMonth} Tasks</h3>
+            {monthlyTasks[activeMonth].length === 0 && (
+              <p style={{ color: "#9ca3af", fontSize: 14, marginBottom: 16, fontStyle: "italic" }}>No tasks yet for {activeMonth}.</p>
+            )}
+            {monthlyTasks[activeMonth].map((task, i) => (
+              <div key={i} style={{ background: "#f9fafb", borderRadius: 8, overflow: "hidden", marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px" }}>
                   {editIdx === i ? (
                     <div style={{ flex: 1, display: "flex", gap: 8 }}>
                       <input value={editText} onChange={e => setEditText(e.target.value)} onKeyDown={e => e.key === "Enter" && saveEditTask(activeMonth)}
-                        style={{ ...styles.input, flex: 1 }} autoFocus />
-                      <button onClick={() => saveEditTask(activeMonth)} style={{ fontSize: 12, color: PRIMARY, background: "none", border: "none", cursor: "pointer", fontWeight: 500 }}>Save</button>
-                      <button onClick={() => setEditIdx(null)} style={{ fontSize: 12, color: "#9ca3af", background: "none", border: "none", cursor: "pointer" }}>Cancel</button>
+                        style={{ ...s.inp, flex: 1 }} autoFocus />
+                      <button onClick={() => saveEditTask(activeMonth)} style={{ ...s.smBtn, color: PRIMARY, fontWeight: 500 }}>Save</button>
+                      <button onClick={() => setEditIdx(null)} style={{ ...s.smBtn, color: "#9ca3af" }}>Cancel</button>
                     </div>
                   ) : (
                     <>
-                      <span style={{ color: ACCENT, marginTop: 2, flexShrink: 0, fontSize: 13 }}>◆</span>
-                      <span style={{ flex: 1, fontSize: 14, color: "#374151" }}>{task}</span>
+                      <button onClick={() => setExpandedTask(expandedTask === i ? null : i)} style={{ ...s.smBtn, color: ACCENT, marginTop: 0, flexShrink: 0 }}>
+                        {expandedTask === i ? "▼" : "▶"}
+                      </button>
+                      <span style={{ flex: 1, fontSize: 14, color: "#374151" }}>{task.text}
+                        {task.subtasks.length > 0 && <span style={{ marginLeft: 8, fontSize: 12, color: "#9ca3af" }}>({task.subtasks.filter(st => st.checked).length}/{task.subtasks.length})</span>}
+                      </span>
                       <div style={{ display: "flex", alignItems: "center", gap: 2, marginLeft: 8, flexShrink: 0 }}>
-                        <button onClick={() => moveTask(activeMonth, i, -1)} style={{ fontSize: 12, color: "#9ca3af", background: "none", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 4 }}>↑</button>
-                        <button onClick={() => moveTask(activeMonth, i, 1)} style={{ fontSize: 12, color: "#9ca3af", background: "none", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 4 }}>↓</button>
-                        <button onClick={() => startEditTask(i, task)} style={{ fontSize: 12, color: "#3b82f6", background: "none", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 4, fontWeight: 500 }}>Edit</button>
-                        <button onClick={() => removeTask(activeMonth, i)} style={{ fontSize: 12, color: "#f87171", background: "none", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 4, fontWeight: 500 }}>✕</button>
+                        <button onClick={() => moveTask(activeMonth, i, -1)} style={{ ...s.smBtn, color: "#9ca3af" }}>↑</button>
+                        <button onClick={() => moveTask(activeMonth, i, 1)} style={{ ...s.smBtn, color: "#9ca3af" }}>↓</button>
+                        <button onClick={() => startEditTask(i, task.text)} style={{ ...s.smBtn, color: "#3b82f6", fontWeight: 500 }}>Edit</button>
+                        <button onClick={() => removeTask(activeMonth, i)} style={{ ...s.smBtn, color: "#f87171", fontWeight: 500 }}>✕</button>
                       </div>
                     </>
                   )}
                 </div>
-              ))}
-              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <input value={newTask} onChange={e => setNewTask(e.target.value)} onKeyDown={e => e.key === "Enter" && addTask()}
-                  placeholder={`Add a task for ${activeMonth}...`} style={{ ...styles.input, flex: 1 }} />
-                <button onClick={addTask} style={{ ...styles.btn, flexShrink: 0 }}>Add</button>
+                {expandedTask === i && editIdx !== i && (
+                  <div style={{ padding: "8px 16px 12px", marginLeft: 16, borderTop: "1px solid #e5e7eb" }}>
+                    {task.subtasks.length === 0 && <p style={{ fontSize: 12, color: "#9ca3af", fontStyle: "italic", marginBottom: 8 }}>No checklist items yet.</p>}
+                    {task.subtasks.map((st, j) => (
+                      <div key={j} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                        <input type="checkbox" checked={st.checked} onChange={() => toggleSubtask(activeMonth, i, j)} style={{ width: 14, height: 14 }} />
+                        <span style={{ flex: 1, fontSize: 13, color: st.checked ? "#9ca3af" : "#374151", textDecoration: st.checked ? "line-through" : "none" }}>{st.text}</span>
+                        <button onClick={() => removeSubtask(activeMonth, i, j)} style={{ ...s.smBtn, color: "#d1d5db", fontSize: 11 }}>✕</button>
+                      </div>
+                    ))}
+                    <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                      <input value={newSubtask[`${activeMonth}-${i}`] || ""} onChange={e => setNewSubtask(p => ({ ...p, [`${activeMonth}-${i}`]: e.target.value }))}
+                        onKeyDown={e => e.key === "Enter" && addSubtask(activeMonth, i)}
+                        placeholder="Add checklist item..." style={{ ...s.inp, flex: 1, fontSize: 12, padding: "6px 10px" }} />
+                      <button onClick={() => addSubtask(activeMonth, i)} style={{ padding: "6px 12px", background: PRIMARY, color: "white", border: "none", borderRadius: 6, fontSize: 12, cursor: "pointer", fontWeight: 500 }}>Add</button>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-
-            {/* Supplemental */}
-            <div style={{ padding: "24px", borderTop: "1px solid #f3f4f6" }}>
-              <div style={{ marginBottom: 20 }}>
-                <label style={styles.label}>💡 Tips & Institutional Knowledge</label>
-                <textarea value={tips} onChange={e => setTips(e.target.value)} rows={3} placeholder="Things you wish someone had told you..." style={styles.textarea} />
-              </div>
-              <div style={{ marginBottom: 20 }}>
-                <label style={styles.label}>📇 Key Contacts</label>
-                <textarea value={contacts} onChange={e => setContacts(e.target.value)} rows={2} placeholder="e.g. Drama Director: Mrs. Smith (ext. 234)" style={styles.textarea} />
-              </div>
-              <div>
-                <label style={styles.label}>📁 Important Files & Where to Find Them</label>
-                <textarea value={files} onChange={e => setFiles(e.target.value)} rows={2} placeholder="e.g. Budget spreadsheet in shared Google Drive" style={styles.textarea} />
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div style={{ padding: "16px 24px", background: "#f9fafb", borderRadius: "0 0 16px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 13, color: "#6b7280" }}>{totalTasks} task{totalTasks !== 1 ? "s" : ""} across {Object.values(monthlyTasks).filter(t => t.length).length} months</span>
-              <button onClick={saveGuide} disabled={saving} style={{ ...styles.btn, opacity: saving ? 0.5 : 1 }}>
-                {saving ? "Saving..." : "💾 Save Guide"}
-              </button>
+            ))}
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <input value={newTask} onChange={e => setNewTask(e.target.value)} onKeyDown={e => e.key === "Enter" && addTask()}
+                placeholder={`Add a task for ${activeMonth}...`} style={{ ...s.inp, flex: 1 }} />
+              <button onClick={addTask} style={{ ...s.btn, flexShrink: 0 }}>Add</button>
             </div>
           </div>
+
+          {/* Supplemental */}
+          <div style={{ padding: 24, borderTop: "1px solid #f3f4f6" }}>
+            <div style={{ marginBottom: 20 }}>
+              <label style={s.lbl}>💡 Tips & Institutional Knowledge</label>
+              <textarea value={tips} onChange={e => setTips(e.target.value)} rows={3} placeholder="Things you wish someone had told you..." style={s.ta} />
+            </div>
+
+            {/* Contacts */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <label style={{ ...s.lbl, marginBottom: 0 }}>📇 Key Contacts</label>
+                <button onClick={() => { setContactForm(emptyContact()); setEditContactIdx(null); setShowContactForm(true); }}
+                  style={{ padding: "6px 12px", background: PRIMARY, color: "white", border: "none", borderRadius: 8, fontSize: 12, cursor: "pointer", fontWeight: 500 }}>+ Add Contact</button>
+              </div>
+              {contacts.length === 0 && !showContactForm && <p style={{ fontSize: 12, color: "#9ca3af", fontStyle: "italic" }}>No contacts added yet.</p>}
+              {contacts.map((c, i) => <ContactCard key={i} c={c} i={i} editable={true} />)}
+              {showContactForm && (
+                <div style={{ marginTop: 12, border: "1px solid #bfdbfe", borderRadius: 8, padding: 16, background: "#eff6ff" }}>
+                  <h4 style={{ fontSize: 14, fontWeight: 600, color: "#1f2937", marginBottom: 12 }}>{editContactIdx !== null ? "Edit" : "New"} Contact</h4>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div>
+                      <label style={{ display: "block", fontSize: 12, color: "#4b5563", marginBottom: 4 }}>Name *</label>
+                      <input value={contactForm.name} onChange={e => setContactForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Jane Smith" style={{ ...s.inp, fontSize: 13, padding: "8px 10px" }} />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontSize: 12, color: "#4b5563", marginBottom: 4 }}>Role / Company</label>
+                      <input value={contactForm.company} onChange={e => setContactForm(p => ({ ...p, company: e.target.value }))} placeholder="e.g. Drama Director" style={{ ...s.inp, fontSize: 13, padding: "8px 10px" }} />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontSize: 12, color: "#4b5563", marginBottom: 4 }}>Phone</label>
+                      <input value={contactForm.phone} onChange={e => setContactForm(p => ({ ...p, phone: e.target.value }))} placeholder="e.g. 555-123-4567" style={{ ...s.inp, fontSize: 13, padding: "8px 10px" }} />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontSize: 12, color: "#4b5563", marginBottom: 4 }}>Email</label>
+                      <input value={contactForm.email} onChange={e => setContactForm(p => ({ ...p, email: e.target.value }))} placeholder="e.g. jane@school.edu" style={{ ...s.inp, fontSize: 13, padding: "8px 10px" }} />
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 12 }}>
+                    <label style={{ display: "block", fontSize: 12, color: "#4b5563", marginBottom: 4 }}>Notes</label>
+                    <input value={contactForm.notes} onChange={e => setContactForm(p => ({ ...p, notes: e.target.value }))} placeholder="e.g. Best to call after 3pm" style={{ ...s.inp, fontSize: 13, padding: "8px 10px" }} />
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                    <button onClick={saveContact} style={{ padding: "8px 16px", background: PRIMARY, color: "white", border: "none", borderRadius: 8, fontSize: 12, cursor: "pointer", fontWeight: 500 }}>
+                      {editContactIdx !== null ? "Update" : "Add"} Contact
+                    </button>
+                    <button onClick={() => { setShowContactForm(false); setEditContactIdx(null); }} style={{ padding: "8px 16px", background: "#f3f4f6", color: "#4b5563", border: "none", borderRadius: 8, fontSize: 12, cursor: "pointer", fontWeight: 500 }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label style={s.lbl}>📁 Important Files & Where to Find Them</label>
+              <textarea value={files} onChange={e => setFiles(e.target.value)} rows={2} placeholder="e.g. Budget spreadsheet in shared Google Drive" style={s.ta} />
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div style={{ padding: "16px 24px", background: "#f9fafb", borderRadius: "0 0 16px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 13, color: "#6b7280" }}>{totalTasks} task{totalTasks !== 1 ? "s" : ""} across {Object.values(monthlyTasks).filter(t => t.length).length} months</span>
+            <button onClick={saveGuide} disabled={saving} style={{ ...s.btn, opacity: saving ? 0.5 : 1 }}>
+              {saving ? "Saving..." : "💾 Save Guide"}
+            </button>
+          </div>
         </div>
-      </div>
+      </div></div>
     </>
   );
 }
