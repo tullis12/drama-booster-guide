@@ -183,6 +183,7 @@ export default function OperatingGuide() {
   const [files, setFiles] = useState("");
   const [browseKey, setBrowseKey] = useState(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [newSubtask, setNewSubtask] = useState({});
   const [expandedTask, setExpandedTask] = useState(null);
   const [showContactForm, setShowContactForm] = useState(false);
@@ -423,7 +424,117 @@ export default function OperatingGuide() {
     </div>
   );
 
+  const HelpPage = () => (
+    <>
+      <Head><title>Help — Jefferson Drama Dragons Operating Guide</title></Head>
+      <div style={s.page}><div style={s.container}>
+        <button onClick={() => setShowHelp(false)} style={s.back}>← Back to Home</button>
+        <div style={{ background: "white", borderRadius: 16, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", overflow: "hidden" }}>
+          <div style={{ ...s.hdrEdit, borderRadius: "16px 16px 0 0" }}>
+            <Logo size="sm" />
+            <h2 style={{ fontSize: 24, fontWeight: 700, marginTop: 16, color: "white" }}>User Guide</h2>
+            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginTop: 4 }}>How to use the Operating Guide</p>
+          </div>
+          <div style={{ padding: 32, fontSize: 14, color: "#374151" }}>
+
+            <div style={{ marginBottom: 32 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1f2937", borderBottom: `2px solid ${ACCENT}`, paddingBottom: 4, marginBottom: 12 }}>Getting Started</h3>
+              <p style={{ marginBottom: 8 }}>This app lets each board member document what they do every month, creating a playbook for their successor.</p>
+              <p>From the <strong>home screen</strong>, you can create a new guide, view or edit existing ones, and export guides for printing.</p>
+            </div>
+
+            <div style={{ marginBottom: 32 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1f2937", borderBottom: `2px solid ${ACCENT}`, paddingBottom: 4, marginBottom: 12 }}>Creating a Role Guide</h3>
+              {["Click \"+ Create New Role Guide\" on the home screen", "Select your role from the dropdown (President, Secretary, etc.)", "Click \"⚡ Load starter template\" to pre-fill common tasks (recommended!)", "Customize tasks, add contacts and tips, then click \"💾 Save Guide\""].map((t, i) => (
+                <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start", background: "#f9fafb", borderRadius: 8, padding: 12, marginBottom: 8 }}>
+                  <span style={{ width: 24, height: 24, borderRadius: "50%", background: PRIMARY, color: "white", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i+1}</span>
+                  <span dangerouslySetInnerHTML={{ __html: t }} />
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginBottom: 32 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1f2937", borderBottom: `2px solid ${ACCENT}`, paddingBottom: 4, marginBottom: 12 }}>Managing Tasks</h3>
+              <p style={{ marginBottom: 8 }}>Click the <strong>month tabs</strong> (Jan, Feb, Mar...) to switch months. Months with tasks show a red dot.</p>
+              <p style={{ marginBottom: 12 }}>Each task has these controls:</p>
+              <div style={{ background: "#f9fafb", borderRadius: 8, padding: 16 }}>
+                <div style={{ marginBottom: 8 }}><strong style={{ color: "#1f2937" }}>▶ / ▼</strong> — Expand or collapse the checklist panel</div>
+                <div style={{ marginBottom: 8 }}><strong style={{ color: "#1f2937" }}>↑ / ↓</strong> — Reorder the task</div>
+                <div style={{ marginBottom: 8 }}><strong style={{ color: "#3b82f6" }}>Edit</strong> — Change the task text</div>
+                <div><strong style={{ color: "#f87171" }}>✕</strong> — Delete the task</div>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 32 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1f2937", borderBottom: `2px solid ${ACCENT}`, paddingBottom: 4, marginBottom: 12 }}>Using Checklists</h3>
+              <p style={{ marginBottom: 8 }}>Any task can have a checklist of smaller steps underneath it.</p>
+              {["Click the ▶ arrow next to a task to expand it", "Type a checklist item and press Enter or click Add", "Click the checkbox to mark items complete — progress shows as a counter like (2/3)"].map((t, i) => (
+                <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start", background: "#f9fafb", borderRadius: 8, padding: 12, marginBottom: 8 }}>
+                  <span style={{ width: 24, height: 24, borderRadius: "50%", background: PRIMARY, color: "white", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i+1}</span>
+                  <span dangerouslySetInnerHTML={{ __html: t }} />
+                </div>
+              ))}
+              <div style={{ marginTop: 12, padding: 12, borderRadius: 8, background: "#eff6ff", borderLeft: `4px solid ${PRIMARY}` }}>
+                <p style={{ fontSize: 13 }}><strong style={{ color: PRIMARY }}>💡 Example:</strong> "Set up for spring show" could have subtasks like: ☐ Order concession supplies, ☐ Coordinate set-up crew, ☐ Print programs</p>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 32 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1f2937", borderBottom: `2px solid ${ACCENT}`, paddingBottom: 4, marginBottom: 12 }}>Managing Contacts</h3>
+              <p style={{ marginBottom: 8 }}>Each guide has its own contact list with fields for <strong>Name</strong>, <strong>Role/Company</strong>, <strong>Phone</strong>, <strong>Email</strong>, and <strong>Notes</strong>.</p>
+              <p style={{ marginBottom: 8 }}>Click <strong>"+ Add Contact"</strong> in the Key Contacts section. Fill in the details and click <strong>"Add Contact"</strong>. You can edit or delete contacts anytime.</p>
+              <div style={{ marginTop: 12, padding: 12, borderRadius: 8, background: "#eff6ff", borderLeft: `4px solid ${PRIMARY}` }}>
+                <p style={{ fontSize: 13 }}><strong style={{ color: PRIMARY }}>💡 Think about:</strong> Drama Director, school admin, caterers, T-shirt printers, sound/lighting vendors, your accountant, and key parent volunteers.</p>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 32 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1f2937", borderBottom: `2px solid ${ACCENT}`, paddingBottom: 4, marginBottom: 12 }}>Exporting & Printing</h3>
+              <p style={{ marginBottom: 8 }}>From the home screen, click <strong>"📄 Export Guides"</strong> to download:</p>
+              <div style={{ background: "#f9fafb", borderRadius: 8, padding: 16 }}>
+                <div style={{ marginBottom: 8 }}><strong>📋 Export All Guides</strong> — One document with every role, including a table of contents</div>
+                <div><strong>Single Role</strong> — Pick a role to export just that guide</div>
+              </div>
+              <p style={{ marginTop: 12 }}>The export downloads as an .html file. To make a PDF: open it in your browser, press <strong>Ctrl+P</strong> (or Cmd+P on Mac), and choose <strong>"Save as PDF"</strong>.</p>
+            </div>
+
+            <div style={{ marginBottom: 32 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1f2937", borderBottom: `2px solid ${ACCENT}`, paddingBottom: 4, marginBottom: 12 }}>Starter Templates</h3>
+              <p style={{ marginBottom: 8 }}>These roles have pre-built 12-month templates:</p>
+              <div style={{ background: "#f9fafb", borderRadius: 8, padding: 16, fontSize: 13 }}>
+                {[["President","Meetings, strategic planning, Director coordination"],["Vice President","Supporting President, onboarding, committee liaison"],["Secretary","Minutes, rosters, filings, governance docs"],["Treasurer","Financial reports, budgets, show revenue, taxes"],["Event Coordinator","Show events, concessions, banquets"],["Fundraising Coordinator","Campaigns, sponsorships, grants"],["Volunteer Coordinator","Recruitment, scheduling, recognition"]].map(([r,d]) => (
+                  <div key={r} style={{ marginBottom: 4 }}><strong>{r}</strong> — {d}</div>
+                ))}
+              </div>
+              <p style={{ marginTop: 8 }}>Templates are a starting point — customize them to match what you actually do!</p>
+            </div>
+
+            <div>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1f2937", borderBottom: `2px solid ${ACCENT}`, paddingBottom: 4, marginBottom: 12 }}>FAQ</h3>
+              {[
+                ["Can others see my changes right away?", "Yes — once you save, changes are visible to everyone immediately."],
+                ["What if two people edit at the same time?", "The last person to save will overwrite. Coordinate so only one person edits a guide at a time."],
+                ["Can I use this on my phone?", "Yes! It works on phones, tablets, and computers."],
+                ["I forgot the password!", "Contact your board president for the shared password."],
+                ["Will updating the website delete my data?", "No. Data is stored separately, so code updates never affect your saved guides."],
+                ["How do I add a checklist to a task?", "Click the ▶ arrow next to any task to expand it, then type a checklist item and click Add."],
+                ["The exported file is .html — how do I make it a PDF?", "Open the .html file in your browser, then press Ctrl+P (or Cmd+P on Mac) and choose \"Save as PDF\"."]
+              ].map(([q, a], i) => (
+                <div key={i} style={{ marginBottom: 16 }}>
+                  <p style={{ fontWeight: 600, color: "#1f2937" }}>{q}</p>
+                  <p style={{ color: "#6b7280", marginTop: 2 }}>{a}</p>
+                </div>
+              ))}
+            </div>
+
+          </div>
+        </div>
+      </div></div>
+    </>
+  );
+
   if (!authenticated) return <PasswordGate onSuccess={() => setAuthenticated(true)} />;
+  if (showHelp) return <HelpPage />;
 
   if (loading) return (
     <div style={{ ...s.page, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -494,6 +605,9 @@ export default function OperatingGuide() {
             </div>
           )}
           <p style={{ textAlign: "center", fontSize: 12, color: "#9ca3af", marginTop: 32 }}>🎭 Data is shared — all booster board members can view and edit guides.</p>
+          <div style={{ textAlign: "center", marginTop: 12 }}>
+            <button onClick={() => setShowHelp(true)} style={{ fontSize: 12, color: "#9ca3af", background: "none", border: "none", cursor: "pointer", fontWeight: 500 }}>❓ Help & User Guide</button>
+          </div>
         </div></div>
       </>
     );
